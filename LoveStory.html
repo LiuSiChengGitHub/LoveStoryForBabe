@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LoveFlix - For You</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* --- 全局配置 --- */
+        :root { --netflix-red: #E50914; --bg-black: #141414; --text-white: #fff; }
+        body { margin: 0; background-color: var(--bg-black); color: var(--text-white); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; overflow-x: hidden; padding-bottom: 80px; }
+        .hidden { display: none !important; }
+        .fade-in { animation: fadeIn 1.5s; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        /* --- 1. 登录界面样式 --- */
+        #scene-login { 
+            height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; 
+            /* [修改 1.1] 登录背景图在这里改 url(...) */
+            background: linear-gradient(rgba(0,0,0,0.5), rgba(0,0,0,0.5)), url('back.jpg'); 
+            background-size: cover; 
+            background-position: center;
+        }
+        .login-box { background: rgba(0,0,0,0.75); padding: 40px; border-radius: 4px; text-align: center; width: 80%; max-width: 300px; }
+        .login-title { font-size: 24px; margin-bottom: 20px; font-weight: bold; }
+
+        /* --- 2. 礼物界面样式 --- */
+        #scene-gift { height: 100vh; display: flex; flex-direction: column; justify-content: center; align-items: center; background: radial-gradient(circle at center, #1a2e22 0%, #050a07 100%); position: relative; overflow: hidden; }
+        .tree-img { height: 50vh; width: auto; object-fit: contain; filter: drop-shadow(0 0 15px rgba(255, 223, 0, 0.4)); z-index: 1; }
+        .gift-box { font-size: 60px; cursor: pointer; z-index: 2; animation: bounce 2s infinite; margin-top: -40px; }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% {transform: translateY(0);} 40% {transform: translateY(-15px);} 60% {transform: translateY(-7px);} }
+        .snow { position: absolute; top: -10px; background: white; border-radius: 50%; opacity: 0.8; animation: fall linear infinite; }
+        @keyframes fall { to { transform: translateY(100vh); } }
+
+        /* --- 3. 首页布局样式 --- */
+        header { padding: 15px 30px; display: flex; justify-content: space-between; align-items: center; background: linear-gradient(to bottom, rgba(0,0,0,0.9) 0%, rgba(0,0,0,0) 100%); position: fixed; width: 100%; top: 0; z-index: 50; box-sizing: border-box; }
+        .logo { color: var(--netflix-red); font-weight: bold; font-size: 28px; text-transform: uppercase; letter-spacing: 2px; }
+
+        /* 轮播图组件 */
+        .hero-carousel { position: relative; height: 85vh; min-height: 500px; width: 100%; overflow: hidden; margin-bottom: 30px; }
+        .hero-slide { position: absolute; top: 0; left: 0; width: 100%; height: 100%; opacity: 0; transition: opacity 1s ease-in-out; z-index: 1; pointer-events: none; }
+        .hero-slide.active { opacity: 1; z-index: 2; pointer-events: auto; }
+        .bg-video { position: absolute; top: 50%; left: 50%; min-width: 100%; min-height: 100%; width: auto; height: auto; transform: translate(-50%, -50%); object-fit: cover; filter: brightness(0.6); }
+        .hero-content { position: absolute; bottom: 0; left: 0; width: 100%; height: 100%; display: flex; flex-direction: column; justify-content: flex-end; padding: 0 30px 80px 30px; background: linear-gradient(to top, #141414 10%, transparent 80%); box-sizing: border-box; z-index: 10; }
+        .hero-tag { color: #46d369; font-weight: bold; margin-bottom: 5px; letter-spacing: 1px; }
+        .hero-title { font-size: 8vw; line-height: 1.1; margin: 5px 0; text-shadow: 2px 2px 5px rgba(0,0,0,0.8); max-width: 800px; }
+        .hero-desc { font-size: 16px; margin-bottom: 20px; color: #e5e5e5; max-width: 500px; line-height: 1.5; }
+        .btn-play { background: white; color: black; border: none; padding: 10px 25px; border-radius: 4px; font-weight: bold; font-size: 16px; display: inline-flex; align-items: center; gap: 8px; cursor: pointer; width: fit-content; transition: transform 0.2s; }
+        .btn-play:hover { transform: scale(1.05); }
+        .carousel-indicators { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px; z-index: 20; }
+        .indicator { width: 8px; height: 8px; border-radius: 50%; background: rgba(255,255,255,0.4); cursor: pointer; transition: all 0.3s; }
+        .indicator.active { background: white; transform: scale(1.4); }
+
+        /* [核心修改] 统一卡片系统 */
+        .row-title { padding-left: 20px; margin-top: 40px; margin-bottom: 10px; font-size: 18px; font-weight: bold; color: #e5e5e5; display: flex; align-items: center; gap: 10px; }
+        .scroll-row { display: flex; overflow-x: scroll; padding: 0 20px; gap: 10px; scroll-behavior: smooth; }
+        .scroll-row::-webkit-scrollbar { display: none; }
+        
+        /* 基础卡片样式 */
+        .media-card { position: relative; border-radius: 6px; overflow: hidden; cursor: pointer; flex-shrink: 0; transition: transform 0.3s; }
+        .media-card:hover { transform: scale(1.03); z-index: 5; }
+        .media-card img { width: 100%; height: 100%; object-fit: cover; /* 关键：自动裁剪填充 */ display: block; }
+        
+        /* [修改 3 & 4] 三种尺寸规格 */
+        .card-video { width: 220px; height: 125px; } /* 视频缩略图 16:9 */
+        .card-video-portrait { width: 130px; height: 230px; }
+        .card-landscape { width: 200px; height: 130px; } /* 横屏照片 */
+        .card-portrait { width: 130px; height: 190px; } /* 竖屏照片 */
+
+        .play-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.3); display: flex; justify-content: center; align-items: center; opacity: 0; transition: opacity 0.3s; }
+        .media-card:hover .play-overlay { opacity: 1; }
+
+        /* 播放器 & 样式微调 */
+        @media (min-width: 768px) { .hero-title { font-size: 48px; } }
+        #netflix-intro { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: black; z-index: 999; display: flex; justify-content: center; align-items: center; }
+        #intro-video-player { width: 100%; height: 100%; object-fit: cover; }
+        #video-modal { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.95); z-index: 2000; display: flex; justify-content: center; align-items: center; }
+        #main-player { width: 95%; max-width: 1000px; max-height: 80vh; outline: none; box-shadow: 0 0 50px rgba(0,0,0,0.5); }
+        .close-btn { position: absolute; top: 20px; right: 20px; color: white; font-size: 40px; cursor: pointer; z-index: 2001; }
+        input[type="text"] { width: 100%; padding: 12px; margin-bottom: 15px; border-radius: 4px; border: none; background: #333; color: white; box-sizing: border-box; font-size: 16px; }
+        .btn-red { background-color: var(--netflix-red); color: white; border: none; padding: 12px 20px; border-radius: 4px; cursor: pointer; font-weight: bold; width: 100%; font-size: 16px;}
+    </style>
+</head>
+<body>
+
+    <audio id="bg-music"></audio>
+    <audio id="xmas-sound"><source src="hoho.mp3" type="audio/mpeg"></audio>
+
+    <div id="scene-login">
+        <div class="login-box">
+            <div class="login-title">准备好进入回忆了吗？</div>
+            <input type="text" id="password-input" placeholder="我们的纪念日是？（4位数）">
+            <button class="btn-red" onclick="checkPass()">开启回忆</button>
+            <p id="error-msg" style="color:var(--netflix-red); display:none; margin-top:10px;">纪念日错啦傻der</p>
+        </div>
+    </div>
+
+    <div id="scene-gift" class="hidden">
+        <div class="snow" style="left:10%; animation-duration:5s;"></div>
+        <div class="snow" style="left:50%; animation-duration:7s; width:8px; height:8px;"></div>
+        <div class="snow" style="left:80%; animation-duration:4s;"></div>
+        
+        <img class="tree-img" src="https://pngimg.com/d/christmas_tree_PNG25.png" alt="Tree">
+        <div class="gift-box" onclick="playIntro()">🎁</div>
+        <div style="color:#aaa; margin-top:10px; font-size:14px;">Tap to Open</div>
+    </div>
+
+    <div id="netflix-intro" class="hidden">
+        <video id="intro-video-player" playsinline><source src="netflix_intro.mp4" type="video/mp4"></video>
+    </div>
+
+    <div id="scene-home" class="hidden">
+        <header>
+            <div class="logo">LOVEFLIX</div>
+            <i class="fas fa-music" onclick="toggleBGM()" style="font-size: 22px; cursor:pointer; opacity:0.8;"></i>
+        </header>
+
+        <div class="hero-carousel" id="hero-slider">
+            
+            <div class="hero-slide active">
+                <video class="bg-video" muted loop playsinline poster="cover1.jpg">
+                    <source src="bg_video1.mp4" type="video/mp4">
+                </video>
+                <div class="hero-content">
+                    <div class="hero-tag">FIRST VLOG</div>
+                    <h1 class="hero-title">初次相遇的冬天</h1>
+                    <div class="hero-desc">那天阳光正好，我们在东湖漫步，风吹过发梢。</div>
+                    <button class="btn-play" onclick="playVideo('https://videoforbirthday2025.oss-cn-wuhan-lr.aliyuncs.com/Importvideo%201696272.871139.mp4')">
+                        <i class="fas fa-play"></i> 播放回忆
+                    </button>
+                </div>
+            </div>
+
+            <div class="hero-slide">
+                <video class="bg-video" muted loop playsinline poster="cover2.jpg">
+                    <source src="bg_video2.mp4" type="video/mp4">
+                </video>
+                <div class="hero-content">
+                    <div class="hero-tag">SECOND VLOG</div>
+                    <h1 class="hero-title">一起逛超市</h1>
+                    <div class="hero-desc">寒冷的冬风，温暖的超市，炽热的我们</div>
+                    <button class="btn-play" onclick="playVideo('https://videoforbirthday2025.oss-cn-wuhan-lr.aliyuncs.com/full_video2.mp4')">
+                        <i class="fas fa-play"></i> 播放回忆
+                    </button>
+                </div>
+            </div>
+
+            <div class="hero-slide">
+                <video class="bg-video" muted loop playsinline poster="cover3.jpg">
+                    <source src="bg_video3.mp4" type="video/mp4">
+                </video>
+                <div class="hero-content">
+                    <div class="hero-tag">DAILY LIFE</div>
+                    <h1 class="hero-title">一起跳起来！</h1>
+                    <div class="hero-desc">独属于我们的舞会</div>
+                    <button class="btn-play" onclick="playVideo('https://videoforbirthday2025.oss-cn-wuhan-lr.aliyuncs.com/VID_20230628_103515.mp4')">
+                        <i class="fas fa-play"></i> 播放回忆
+                    </button>
+                </div>
+            </div>
+            
+            <div class="carousel-indicators" id="dots-container"></div>
+        </div>
+
+        <div class="row-title"><i class="fas fa-film"></i> 回忆片段</div>
+        <div class="scroll-row">
+            
+            <div class="media-card card-video" onclick="playVideo('vidh1.mp4')">
+                <img src="vidh1.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video" onclick="playVideo('https://videoforbirthday2025.oss-cn-wuhan-lr.aliyuncs.com/vidh2.mp4')">
+                <img src="vidh2.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video" onclick="playVideo('vidh3.mp4')">
+                <img src="vidh3.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video" onclick="playVideo('vidh4.mp4')">
+                <img src="vidh4.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video" onclick="playVideo('vidh5.mp4')">
+                <img src="vidh5.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+        </div>
+
+
+        <div class="row-title"><i class="fas fa-mobile-alt"></i> 日本之旅</div>
+        <div class="scroll-row">
+            
+            <div class="media-card card-video-portrait" onclick="playVideo('https://videoforbirthday2025.oss-cn-wuhan-lr.aliyuncs.com/vids1.mp4')">
+                <img src="vids1.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids2.mp4')">
+                <img src="vids2.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids3.mp4')">
+                <img src="vids3.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids4.mp4')">
+                <img src="vids4.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids5.mp4')">
+                <img src="vids5.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('https://videoforbirthday2025.oss-cn-wuhan-lr.aliyuncs.com/vids6.mp4')">
+                <img src="vids6.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids7.mp4')">
+                <img src="vids7.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids8.mp4')">
+                <img src="vids8.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+            <div class="media-card card-video-portrait" onclick="playVideo('vids9.mp4')">
+                <img src="vids9.jpg" alt="封面">
+                <div class="play-overlay"><i class="fas fa-play" style="color:white; font-size:30px;"></i></div>
+            </div>
+
+        </div>
+        
+        <div class="row-title"><i class="fas fa-image"></i> 足迹片段</div>
+        <div class="scroll-row">
+            
+            <div class="media-card card-landscape">
+                <img src="jpgh1.jpg" alt="回忆">
+            </div>
+
+            <div class="media-card card-landscape">
+                <img src="jpgh2.jpg" alt="回忆">
+            </div>
+
+            <div class="media-card card-landscape">
+                <img src="jpgh3.jpg" alt="回忆">
+            </div>
+
+            <div class="media-card card-landscape">
+                <img src="jpgh4.jpg" alt="回忆">
+            </div>
+
+            <div class="media-card card-landscape">
+                <img src="jpgh5.jpg" alt="回忆">
+            </div>
+
+        </div>
+
+        <div class="row-title"><i class="fas fa-mobile-alt"></i>往日随笔</div>
+        <div class="scroll-row">
+            
+            <div class="media-card card-portrait"><img src="jpgs1.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs2.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs3.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs4.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs5.jpg"></div>
+            
+            <div class="media-card card-portrait"><img src="jpgs6.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs7.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs8.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs9.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs10.jpg"></div>
+
+            <div class="media-card card-portrait"><img src="jpgs11.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs12.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs13.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs14.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs15.jpg"></div>
+
+            <div class="media-card card-portrait"><img src="jpgs16.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs17.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs18.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs19.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs20.jpg"></div>
+
+            <div class="media-card card-portrait"><img src="jpgs21.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs22.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs23.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs24.jpg"></div>
+            <div class="media-card card-portrait"><img src="jpgs25.jpg"></div>
+
+        </div>
+        
+        <br><br>
+        <div style="text-align:center; opacity:0.5; font-size:12px;">Forever & Always</div>
+    </div>
+
+    <div id="video-modal" class="hidden">
+        <div class="close-btn" onclick="closeVideo()">&times;</div>
+        <video id="main-player" controls controlsList="nodownload"><source src="" type="video/mp4"></video>
+    </div>
+
+    <script>
+        // --- 🎵 BGM 顺序播放版 ---
+        const bgm = document.getElementById('bg-music');
+        const xmasSound = document.getElementById('xmas-sound');
+
+        // 1. 在这里填入你的 3 首歌曲文件名 (按你想播放的顺序)
+        const musicList = [
+            'music1.mp3', 
+            'music2.mp3', 
+            'music3.mp3'
+        ];
+        
+        // 记录当前播到第几首了
+        let currentMusicIndex = 0;
+
+        // 2. 播放下一首的函数
+        function playNextSong() {
+            currentMusicIndex++;
+            // 如果播完了最后一首，就回到第一首 (循环列表)
+            if (currentMusicIndex >= musicList.length) {
+                currentMusicIndex = 0;
+            }
+            playMusicAtIndex(currentMusicIndex);
+        }
+
+        // 播放指定位置的歌
+        function playMusicAtIndex(index) {
+            bgm.src = musicList[index];
+            bgm.volume = 1.0; 
+            bgm.play().catch(e => console.log("等待交互播放"));
+        }
+
+        // 3. 监听：当这一首放完时，自动切换下一首
+        bgm.addEventListener('ended', function() {
+            playNextSong();
+        });
+
+
+        // 1. 登录逻辑
+        function checkPass() { 
+            // 在这里修改你的密码
+            if(document.getElementById('password-input').value === '1209') { 
+                xmasSound.volume = 0.8; xmasSound.play().catch(()=>{});
+                document.getElementById('scene-login').classList.add('hidden'); 
+                document.getElementById('scene-gift').classList.remove('hidden'); 
+            } else { 
+                document.getElementById('error-msg').style.display = 'block'; 
+            } 
+        }
+
+        // 2. 礼物开启逻辑
+        function playIntro() { 
+            xmasSound.pause(); // 停止圣诞声
+            document.getElementById('scene-gift').classList.add('hidden'); 
+            
+            const intro = document.getElementById('netflix-intro');
+            const video = document.getElementById('intro-video-player');
+            intro.classList.remove('hidden'); 
+            video.play().catch(()=>{});
+            
+            // 监听播放结束进入主页
+            video.onended = function() {
+                intro.classList.add('hidden');
+                document.getElementById('scene-home').classList.remove('hidden');
+                document.getElementById('scene-home').classList.add('fade-in');
+                initCarousel(); // 初始化轮播
+                playMusicAtIndex(0); // 从第 0 首（第一首）开始播放
+            };
+        }
+
+        // 3. 视频播放逻辑
+        function playVideo(src) {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('main-player');
+            player.src = src;
+            modal.classList.remove('hidden');
+            player.play();
+            bgm.volume = 0.1; // 背景乐变小
+        }
+        function closeVideo() {
+            const modal = document.getElementById('video-modal');
+            const player = document.getElementById('main-player');
+            player.pause(); player.src="";
+            modal.classList.add('hidden');
+            bgm.volume = 1.0; // 背景乐恢复
+        }
+        function toggleBGM() { bgm.paused ? bgm.play() : bgm.pause(); }
+
+        // 4. 自动轮播系统 (无需修改)
+        let currentSlide = 0;
+        let slideInterval;
+        let slides, dots;
+
+        function initCarousel() {
+            slides = document.querySelectorAll('.hero-slide');
+            const container = document.getElementById('dots-container');
+            
+            // 自动生成小白点
+            container.innerHTML = '';
+            slides.forEach((_, index) => {
+                const dot = document.createElement('div');
+                dot.className = index === 0 ? 'indicator active' : 'indicator';
+                dot.onclick = () => manualSlide(index);
+                container.appendChild(dot);
+            });
+            dots = document.querySelectorAll('.indicator');
+
+            // 启动第一个视频
+            playSlideVideo(0);
+            slideInterval = setInterval(nextSlide, 8000);
+        }
+
+        function playSlideVideo(index) {
+            // 暂停所有视频
+            document.querySelectorAll('.hero-slide video').forEach(v => v.pause());
+            // 播放当前视频
+            const v = slides[index].querySelector('video');
+            if(v) { v.currentTime = 0; v.play().catch(()=>{}); }
+        }
+
+        function showSlide(index) {
+            slides[currentSlide].classList.remove('active');
+            dots[currentSlide].classList.remove('active');
+            
+            currentSlide = index;
+            if (currentSlide >= slides.length) currentSlide = 0;
+            if (currentSlide < 0) currentSlide = slides.length - 1;
+
+            slides[currentSlide].classList.add('active');
+            dots[currentSlide].classList.add('active');
+            playSlideVideo(currentSlide);
+        }
+
+        function nextSlide() { showSlide(currentSlide + 1); }
+        function manualSlide(index) {
+            clearInterval(slideInterval);
+            showSlide(index);
+            slideInterval = setInterval(nextSlide, 8000);
+        }
+    </script>
+</body>
+</html>
